@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Blog Engine</title>
 <style>
-  :root { --bg:#0e1116; --panel:#161b22; --line:#2b3240; --text:#e6e9ef; --muted:#8b95a7; --accent:#5b8cff; --ok:#2ea36b; --warn:#d29922; }
+  :root { --bg:#f6f7f9; --panel:#ffffff; --line:#dfe3ea; --text:#1c2330; --muted:#68738a; --accent:#3b6ff0; --ok:#1f9d5f; --warn:#b07d10; }
+  :root[data-theme="dark"] { --bg:#0e1116; --panel:#161b22; --line:#2b3240; --text:#e6e9ef; --muted:#8b95a7; --accent:#5b8cff; --ok:#2ea36b; --warn:#d29922; }
   * { box-sizing:border-box; margin:0; }
   body { background:var(--bg); color:var(--text); font:14px/1.5 ui-sans-serif,system-ui,-apple-system,sans-serif; padding:32px 20px; }
   .wrap { max-width:880px; margin:0 auto; }
@@ -34,6 +35,7 @@
 </head>
 <body>
 <div class="wrap">
+  <button class="ghost" style="float:right" onclick="toggleTheme()" id="themeBtn">Dark mode</button>
   <h1>Persistence Blog Engine</h1>
   <div class="sub">research → draft → preview → approve &amp; publish (opens a PR on the website repo)</div>
 
@@ -117,6 +119,17 @@ async function publish(slug, mode) {
   document.body.classList.remove('busy');
   refresh();
 }
+function applyTheme(t) {
+  if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+  else document.documentElement.removeAttribute('data-theme');
+  $('#themeBtn').textContent = t === 'dark' ? 'Light mode' : 'Dark mode';
+}
+function toggleTheme() {
+  const next = document.documentElement.hasAttribute('data-theme') ? 'light' : 'dark';
+  try { localStorage.setItem('theme', next); } catch {}
+  applyTheme(next);
+}
+try { applyTheme(localStorage.getItem('theme') || 'light'); } catch { applyTheme('light'); }
 refresh();
 setInterval(refresh, 30000);
 </script>
