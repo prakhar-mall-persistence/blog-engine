@@ -82,7 +82,7 @@ async function refresh() {
       tr.innerHTML = `<td><strong>${p.title}</strong><br><span class="pill">${p.slug}</span></td>
         <td class="actions">${p.hasPreview ? `<a href="/preview/${p.slug}" target="_blank"><button class="ghost">Preview</button></a>` : ''}
         <button class="ghost" onclick="publish('${p.slug}','dry')">Dry-run</button>
-        <button class="ok" onclick="publish('${p.slug}','live')">Approve &amp; publish</button></td>`;
+        <button class="ok" onclick="armPublish(this,'${p.slug}')">Approve &amp; publish</button></td>`;
       posts.appendChild(tr);
     }
     const briefs = $('#briefs tbody'); briefs.innerHTML = '';
@@ -110,8 +110,14 @@ async function act(kind) {
   refresh();
 }
 async function draftFromBrief(topic) { $('#topic').value = topic; act('write'); }
+function armPublish(btn, slug) {
+  if (btn.dataset.armed) { delete btn.dataset.armed; publish(slug, 'live'); return; }
+  btn.dataset.armed = '1';
+  btn.textContent = 'Confirm publish?';
+  btn.style.background = 'var(--warn)';
+  setTimeout(() => { if (btn.dataset.armed) { delete btn.dataset.armed; btn.textContent = 'Approve & publish'; btn.style.background = ''; } }, 4000);
+}
 async function publish(slug, mode) {
-  if (mode === 'live' && !confirm(`Publish "${slug}" for real? This opens a PR on the website repo.`)) return;
   document.body.classList.add('busy');
   log(`publish ${slug} (${mode})…`);
   try { const r = await api('/publish', { slug, mode }); log(`publish ${slug}: ${JSON.stringify(r)}`, 'good'); }
