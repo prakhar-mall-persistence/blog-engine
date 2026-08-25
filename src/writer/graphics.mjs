@@ -123,7 +123,7 @@ export function heroGraphic(imageColor = 'violet') {
   let bars = '';
   for (let i = 0; i < 48; i++) {
     const h = 16 + Math.abs(Math.sin(i * 0.5) * 70) + (i % 4) * 6;
-    bars += `<rect x="${30 + i * 19}" y="${180 - h / 2}" width="7" height="${h}" rx="3.5" fill="${C.a}" opacity="${0.2 + (i % 6) * 0.11}"/>`;
+    bars += `<rect x="${30 + i * 19}" y="${150 - h / 2}" width="7" height="${h}" rx="3.5" fill="${C.a}" opacity="${0.2 + (i % 6) * 0.11}"/>`;
   }
   return `<svg viewBox="0 0 960 300" width="100%" xmlns="http://www.w3.org/2000/svg" style="display:block">
     <defs>
@@ -131,6 +131,6 @@ export function heroGraphic(imageColor = 'violet') {
       ${dotPattern('hdp', C.a)}
     </defs>
     <rect width="960" height="300" fill="url(#hg)"/><rect width="960" height="300" fill="url(#hdp)"/>
-    <g transform="translate(0,55)">${bars}</g>
+    <g>${bars}</g>
   </svg>`;
 }
