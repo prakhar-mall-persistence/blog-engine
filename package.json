@@ -11,6 +11,7 @@
     "write": "node bin/write.mjs",
     "index": "node bin/index.mjs",
     "serve": "node bin/serve.mjs",
+    "start": "node bin/serve.mjs",
     "publish": "node bin/publish.mjs"
   }
 }
