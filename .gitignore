@@ -1,0 +1,9 @@
+# secrets — never commit
+.env
+.env.*
+
+# generated / cached
+node_modules/
+data/cache/
+data/brain.json
+output/

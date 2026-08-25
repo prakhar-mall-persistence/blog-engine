@@ -1,0 +1,16 @@
+{
+  "name": "persistence-blog-engine",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "engines": { "node": ">=22" },
+  "description": "Research-to-publish blog engine for Persistence. Phase 1: the brain + a keyless research prototype.",
+  "scripts": {
+    "ingest": "node bin/ingest.mjs",
+    "research": "node bin/research.mjs",
+    "write": "node bin/write.mjs",
+    "index": "node bin/index.mjs",
+    "serve": "node bin/serve.mjs",
+    "publish": "node bin/publish.mjs"
+  }
+}

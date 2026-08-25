@@ -1,0 +1,144 @@
+{
+  "name": "Persistence Blog Engine",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [ { "field": "weeks", "weekday": 2, "triggerAtHour": 9 } ] }
+      },
+      "id": "sched-1",
+      "name": "Weekly (Tue 9am)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [ -80, 40 ]
+    },
+    {
+      "parameters": {
+        "assignments": { "assignments": [
+          { "id": "a1", "name": "topic", "value": "voice ai for insurance", "type": "string" },
+          { "id": "a2", "name": "engineBase", "value": "={{ $env.ENGINE_BASE_URL || 'http://localhost:8788' }}", "type": "string" }
+        ] }
+      },
+      "id": "set-1",
+      "name": "Pick topic",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [ 160, 40 ],
+      "notes": "Replace with a Google Sheet / Notion / DB node that pops the next topic from your queue."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.engineBase }}/write",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"topic\": $json.topic, \"notify\": true, \"slackMode\": \"live\" } }}",
+        "options": { "timeout": 120000 }
+      },
+      "id": "http-write",
+      "name": "Engine: research + write + post to Slack",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [ 420, 40 ],
+      "notes": "Calls the engine. It researches (Serper), drafts via Claude, renders the preview, and posts the Slack approval card with Approve/Reject buttons."
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "blog-approval",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "wh-1",
+      "name": "Slack interactivity webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [ -80, 320 ],
+      "notes": "Set this URL as the Slack app's Interactivity Request URL. Slack POSTs button clicks here as x-www-form-urlencoded `payload`."
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.body?.payload ?? $input.first().json.payload;\nconst p = typeof raw === 'string' ? JSON.parse(raw) : raw;\nconst action = p.actions?.[0] || {};\nreturn [{ json: {\n  actionId: action.action_id,\n  slug: action.value,\n  user: p.user?.username || p.user?.name,\n  responseUrl: p.response_url,\n  engineBase: $env.ENGINE_BASE_URL || 'http://localhost:8788'\n} }];"
+      },
+      "id": "code-parse",
+      "name": "Parse Slack action",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [ 180, 320 ]
+    },
+    {
+      "parameters": {
+        "conditions": { "options": { "caseSensitive": true }, "combinator": "and", "conditions": [
+          { "id": "c1", "leftValue": "={{ $json.actionId }}", "rightValue": "approve_post", "operator": { "type": "string", "operation": "equals" } }
+        ] }
+      },
+      "id": "if-approve",
+      "name": "Approved?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [ 440, 320 ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.engineBase }}/publish",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"slug\": $json.slug, \"mode\": \"live\" } }}",
+        "options": { "timeout": 60000 }
+      },
+      "id": "http-publish",
+      "name": "Engine: publish (open PR)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [ 700, 240 ],
+      "notes": "Opens a PR against astro-web. Merging the PR triggers the existing build + deploy. Requires GITHUB_TOKEN in the engine env."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $node['Parse Slack action'].json.responseUrl }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"replace_original\": true, \"text\": '✅ Published — PR opened: ' + ($json.prUrl || '(see engine logs)') } }}"
+      },
+      "id": "http-ack-ok",
+      "name": "Ack: published",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [ 960, 240 ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $node['Parse Slack action'].json.responseUrl }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"replace_original\": true, \"text\": '✕ Draft rejected by ' + $json.user + '. Nothing published.' } }}"
+      },
+      "id": "http-ack-no",
+      "name": "Ack: rejected",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [ 700, 440 ]
+    },
+    {
+      "parameters": { "respondWith": "text", "responseBody": "ok" },
+      "id": "resp-1",
+      "name": "200 to Slack",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [ 1220, 320 ]
+    }
+  ],
+  "connections": {
+    "Weekly (Tue 9am)": { "main": [ [ { "node": "Pick topic", "type": "main", "index": 0 } ] ] },
+    "Pick topic": { "main": [ [ { "node": "Engine: research + write + post to Slack", "type": "main", "index": 0 } ] ] },
+    "Slack interactivity webhook": { "main": [ [ { "node": "Parse Slack action", "type": "main", "index": 0 } ] ] },
+    "Parse Slack action": { "main": [ [ { "node": "Approved?", "type": "main", "index": 0 } ] ] },
+    "Approved?": { "main": [ [ { "node": "Engine: publish (open PR)", "type": "main", "index": 0 } ], [ { "node": "Ack: rejected", "type": "main", "index": 0 } ] ] },
+    "Engine: publish (open PR)": { "main": [ [ { "node": "Ack: published", "type": "main", "index": 0 } ] ] },
+    "Ack: published": { "main": [ [ { "node": "200 to Slack", "type": "main", "index": 0 } ] ] },
+    "Ack: rejected": { "main": [ [ { "node": "200 to Slack", "type": "main", "index": 0 } ] ] }
+  },
+  "settings": { "executionOrder": "v1" }
+}
