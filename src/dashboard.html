@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blog Engine</title>
+<style>
+  :root { --bg:#0e1116; --panel:#161b22; --line:#2b3240; --text:#e6e9ef; --muted:#8b95a7; --accent:#5b8cff; --ok:#2ea36b; --warn:#d29922; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--bg); color:var(--text); font:14px/1.5 ui-sans-serif,system-ui,-apple-system,sans-serif; padding:32px 20px; }
+  .wrap { max-width:880px; margin:0 auto; }
+  h1 { font-size:20px; margin-bottom:4px; }
+  .sub { color:var(--muted); margin-bottom:24px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:18px; margin-bottom:18px; }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin-bottom:12px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; }
+  input[type=text] { flex:1; min-width:240px; background:var(--bg); border:1px solid var(--line); border-radius:8px; color:var(--text); padding:9px 12px; font:inherit; }
+  button { background:var(--accent); border:0; border-radius:8px; color:#fff; padding:9px 16px; font:inherit; font-weight:600; cursor:pointer; }
+  button.ghost { background:transparent; border:1px solid var(--line); color:var(--text); font-weight:500; }
+  button.ok { background:var(--ok); }
+  button:disabled { opacity:.5; cursor:default; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; padding:8px 10px; border-top:1px solid var(--line); vertical-align:middle; }
+  th { border-top:0; color:var(--muted); font-weight:500; font-size:12px; }
+  td.actions { text-align:right; white-space:nowrap; }
+  td.actions button, td.actions a { margin-left:6px; }
+  a { color:var(--accent); text-decoration:none; }
+  .pill { display:inline-block; font-size:11px; padding:2px 8px; border-radius:999px; border:1px solid var(--line); color:var(--muted); }
+  #log { background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:12px; font:12px/1.6 ui-monospace,monospace; white-space:pre-wrap; max-height:260px; overflow:auto; color:var(--muted); }
+  #log .err { color:#ff7b72; } #log .good { color:#56d364; }
+  .empty { color:var(--muted); padding:8px 10px; }
+  .busy { opacity:.6; pointer-events:none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Persistence Blog Engine</h1>
+  <div class="sub">research → draft → preview → approve &amp; publish (opens a PR on the website repo)</div>
+
+  <div class="card">
+    <h2>New topic</h2>
+    <div class="row">
+      <input type="text" id="topic" placeholder='e.g. "voice ai for dental clinics"' onkeydown="if(event.key==='Enter')act('research')">
+      <button onclick="act('research')">Research</button>
+      <button class="ghost" onclick="act('write')">Research + Draft</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Drafted posts — awaiting approval</h2>
+    <table id="posts"><tbody></tbody></table>
+  </div>
+
+  <div class="card">
+    <h2>Research briefs</h2>
+    <table id="briefs"><tbody></tbody></table>
+  </div>
+
+  <div class="card">
+    <h2>Activity</h2>
+    <div id="log">ready.</div>
+  </div>
+</div>
+<script>
+const $ = (s) => document.querySelector(s);
+const log = (msg, cls) => { const d = $('#log'); const line = document.createElement('div'); if (cls) line.className = cls; line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`; d.prepend(line); };
+const api = async (path, payload) => {
+  const r = await fetch(path, payload ? { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) } : undefined);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok && !j.needsDraft) throw new Error(j.error || r.status);
+  return j;
+};
+async function refresh() {
+  try {
+    const s = await api('/state');
+    const posts = $('#posts tbody'); posts.innerHTML = '';
+    if (!s.posts.length) posts.innerHTML = '<tr><td class="empty">No drafts yet — research a topic above.</td></tr>';
+    for (const p of s.posts) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td><strong>${p.title}</strong><br><span class="pill">${p.slug}</span></td>
+        <td class="actions">${p.hasPreview ? `<a href="/preview/${p.slug}" target="_blank"><button class="ghost">Preview</button></a>` : ''}
+        <button class="ghost" onclick="publish('${p.slug}','dry')">Dry-run</button>
+        <button class="ok" onclick="publish('${p.slug}','live')">Approve &amp; publish</button></td>`;
+      posts.appendChild(tr);
+    }
+    const briefs = $('#briefs tbody'); briefs.innerHTML = '';
+    if (!s.briefs.length) briefs.innerHTML = '<tr><td class="empty">No briefs yet.</td></tr>';
+    for (const b of s.briefs) {
+      const slug = b.name.replace(/^brief-/, '').replace(/\.json$/, '');
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${slug}<br><span class="pill">${new Date(b.mtime).toLocaleString()}</span></td>
+        <td class="actions"><button class="ghost" onclick="draftFromBrief('${slug.replace(/-/g,' ')}')">Draft post</button></td>`;
+      briefs.appendChild(tr);
+    }
+  } catch (e) { log('state failed: ' + e.message, 'err'); }
+}
+async function act(kind) {
+  const topic = $('#topic').value.trim();
+  if (!topic) return log('enter a topic first', 'err');
+  document.body.classList.add('busy');
+  log(`${kind} "${topic}" — running…`);
+  try {
+    const r = await api('/' + kind, { topic });
+    if (r.needsDraft) log('no ANTHROPIC_API_KEY set — brief created, draft manually', 'err');
+    else log(`${kind} done${r.previewUrl ? ' → ' + r.previewUrl : ''}`, 'good');
+  } catch (e) { log(`${kind} failed: ${e.message}`, 'err'); }
+  document.body.classList.remove('busy');
+  refresh();
+}
+async function draftFromBrief(topic) { $('#topic').value = topic; act('write'); }
+async function publish(slug, mode) {
+  if (mode === 'live' && !confirm(`Publish "${slug}" for real? This opens a PR on the website repo.`)) return;
+  document.body.classList.add('busy');
+  log(`publish ${slug} (${mode})…`);
+  try { const r = await api('/publish', { slug, mode }); log(`publish ${slug}: ${JSON.stringify(r)}`, 'good'); }
+  catch (e) { log(`publish failed: ${e.message}`, 'err'); }
+  document.body.classList.remove('busy');
+  refresh();
+}
+refresh();
+setInterval(refresh, 30000);
+</script>
+</body>
+</html>

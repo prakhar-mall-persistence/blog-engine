@@ -8,7 +8,7 @@
 //   GET  /preview/:slug                     → the article preview HTML
 //   GET  /blog-index                        → the redesigned index HTML
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -34,6 +34,24 @@ const server = createServer(async (req, res) => {
     const path = url.pathname;
 
     if (path === '/health') return json(res, 200, { ok: true, base: BASE });
+
+    if (path === '/' || path === '/dashboard') {
+      const f = join(dirname(fileURLToPath(import.meta.url)), 'dashboard.html');
+      res.writeHead(200, { 'Content-Type': 'text/html' }); return res.end(await readFile(f));
+    }
+    if (path === '/state') {
+      const files = existsSync(OUT) ? await readdir(OUT) : [];
+      const withTime = async (name) => ({ name, mtime: (await stat(join(OUT, name))).mtime.toISOString() });
+      const briefs = await Promise.all(files.filter((f) => f.startsWith('brief-') && f.endsWith('.json')).map(withTime));
+      const posts = [];
+      for (const f of files.filter((n) => n.startsWith('post-') && n.endsWith('.json'))) {
+        const slug = f.slice(5, -5);
+        const data = JSON.parse(await readFile(join(OUT, f), 'utf8'));
+        posts.push({ slug, title: data.post?.title || slug, mtime: (await stat(join(OUT, f))).mtime.toISOString(), hasPreview: files.includes(`post-${slug}.preview.html`) });
+      }
+      briefs.sort((a, b) => b.mtime.localeCompare(a.mtime)); posts.sort((a, b) => b.mtime.localeCompare(a.mtime));
+      return json(res, 200, { briefs, posts });
+    }
 
     if (path.startsWith('/preview/')) {
       const f = join(OUT, `post-${path.slice(9)}.preview.html`);
